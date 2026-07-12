@@ -13,15 +13,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Playfair+Display:wght@600;700&family=Oswald:wght@500;600;700&display=swap" rel="stylesheet" />
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" async></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" async></script>
-  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" async></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" async></script>
-  <script src="https://unpkg.com/qr-code-styling@1.6.0/lib/qr-code-styling.js" async></script>
-  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js" async></script>
-
   <style>
     :root{
       --bg:#f3f4f6;
@@ -822,8 +813,14 @@
   const clone=v=>JSON.parse(JSON.stringify(v));
   const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
   const slug=v=>String(v||"Presentasi").normalize("NFKD").replace(/[^\w\s-]/g,"").trim().replace(/\s+/g,"-").replace(/-+/g,"-")||"Presentasi";
-  const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+  function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
   const dataURLToBlob=async data=>await(await fetch(data)).blob();
+  function safeStorageGet(key,fallback=null){
+    try{const value=window.localStorage.getItem(key);return value===null?fallback:value}catch{return fallback}
+  }
+  function safeStorageSet(key,value){
+    try{window.localStorage.setItem(key,value);return true}catch{return false}
+  }
 
   function createBlankSlide(name="Slide"){
     return{id:uid(),name,hidden:false,locked:false,notes:"",transition:"fade",transitionDuration:.5,json:null,thumb:""};
@@ -850,19 +847,19 @@
   function hideProgress(){$("#progressOverlay").classList.remove("open")}
   function setThemeMode(theme,persist=true){
     document.documentElement.dataset.theme=theme;$('meta[name="theme-color"]').setAttribute("content",theme==="dark"?"#17181b":"#ffffff");
-    if(persist)localStorage.setItem(THEME_KEY,theme)
+    if(persist)safeStorageSet(THEME_KEY,theme)
   }
   function loadSaved(){
-    setThemeMode(localStorage.getItem(THEME_KEY)==="dark"?"dark":"light",false);
-    try{projects=JSON.parse(localStorage.getItem(PROJECT_KEY)||"[]");if(!Array.isArray(projects))projects=[]}catch{projects=[]}
-    try{const raw=localStorage.getItem(STORAGE_KEY);if(raw)state=normalize(JSON.parse(raw))}catch{}
+    setThemeMode(safeStorageGet(THEME_KEY)==="dark"?"dark":"light",false);
+    try{projects=JSON.parse(safeStorageGet(PROJECT_KEY,"[]"));if(!Array.isArray(projects))projects=[]}catch{projects=[]}
+    try{const raw=safeStorageGet(STORAGE_KEY);if(raw)state=normalize(JSON.parse(raw))}catch{}
     renderHome()
   }
   function queueSave(){
     clearTimeout(saveTimer);$("#saveLabel").textContent="Menyimpan";
     saveTimer=setTimeout(()=>{
       saveCurrentSlide();
-      try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));$("#saveLabel").textContent="Tersimpan"}catch{$("#saveLabel").textContent="Belum tersimpan"}
+      $("#saveLabel").textContent=safeStorageSet(STORAGE_KEY,JSON.stringify(state))?"Tersimpan":"Mode lokal"
     },320)
   }
 
@@ -1360,7 +1357,7 @@
     try{
       const thumb=state.slides[0]?.thumb||"";
       projects.unshift({name:state.name,time:Date.now(),thumb,slides:clone(state.slides),state:clone(state)});
-      projects=projects.slice(0,5);localStorage.setItem(PROJECT_KEY,JSON.stringify(projects));renderHome();toast("Project disimpan.")
+      projects=projects.slice(0,5);if(!safeStorageSet(PROJECT_KEY,JSON.stringify(projects)))throw new Error("Storage tidak tersedia");renderHome();toast("Project disimpan.")
     }catch{toast("Project terlalu besar untuk disimpan.")}
   }
   async function openProject(i){
@@ -1537,7 +1534,21 @@
     if(!document.fullscreenElement&&$("#presentOverlay").classList.contains("open"))closePresentation()
   });
 
-  loadSaved();updateUndo();
+  try{
+    loadSaved();
+    updateUndo();
+    document.documentElement.dataset.appReady="true";
+  }catch(error){
+    console.error("Ngedit Slides gagal dimulai:",error);
+    document.documentElement.dataset.appError="true";
+    const wrap=document.getElementById("toastWrap");
+    if(wrap){
+      const el=document.createElement("div");
+      el.className="toast";
+      el.textContent="Aplikasi gagal dimulai. Muat ulang halaman atau ganti file index.html.";
+      wrap.appendChild(el)
+    }
+  }
 })();
 </script>
 </body>
